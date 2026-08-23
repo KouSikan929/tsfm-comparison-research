@@ -1,0 +1,7 @@
+model_a,model_b,n_shared_points,dm_statistic,p_value,significant_5pct
+kronos,lag-llama,540,-13.568694463383977,0.0,True
+kronos,timesfm,540,7.927960002516161,2.220446049250313e-15,True
+kronos,itransformer,540,4.918233179015841,8.732884866358148e-07,True
+lag-llama,timesfm,540,14.158451741093808,0.0,True
+lag-llama,itransformer,540,10.116313467346606,0.0,True
+timesfm,itransformer,540,-2.1335247130350288,0.03288170659005507,True
