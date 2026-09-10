@@ -391,7 +391,6 @@ def main():
     if getattr(config, 'pre_trained_tokenizer', True):
         tokenizer = KronosTokenizer.from_pretrained(config.finetuned_tokenizer_path)
     else:
-        import json, os
         print("pre_trained_tokenizer=False, randomly initializing Tokenizer architecture for training")
         cfg_path_tok = os.path.join(config.pretrained_tokenizer_path if hasattr(config, 'pretrained_tokenizer_path') else config.finetuned_tokenizer_path, 'config.json')
         with open(cfg_path_tok, 'r') as f:
@@ -418,7 +417,6 @@ def main():
     if getattr(config, 'pre_trained_predictor', True):
         model = Kronos.from_pretrained(config.pretrained_predictor_path)
     else:
-        import json, os
         print("pre_trained_predictor=False, randomly initializing Predictor architecture for training")
         cfg_path = os.path.join(config.pretrained_predictor_path, 'config.json')
         with open(cfg_path, 'r') as f:

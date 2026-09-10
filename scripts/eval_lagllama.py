@@ -37,9 +37,12 @@ def _torch_load_weights_only_false(*args, **kwargs):
 
 torch.load = _torch_load_weights_only_false
 
+from pathlib import Path  # noqa: E402
+
 from huggingface_hub import hf_hub_download  # noqa: E402
 from gluonts.dataset.pandas import PandasDataset  # noqa: E402
 from gluonts.evaluation import make_evaluation_predictions  # noqa: E402
+from gluonts.torch.model.predictor import PyTorchPredictor  # noqa: E402
 
 LAG_LLAMA_ROOT = os.path.join(os.path.dirname(__file__), "..", "models", "lag-llama")
 sys.path.append(os.path.abspath(LAG_LLAMA_ROOT))
@@ -92,6 +95,16 @@ def main():
                          help="Optional seed for the num_samples predictive-distribution draws. "
                               "Unset by default -- prior runs in this project were unseeded, so results "
                               "won't be bit-identical to earlier runs even with a seed now.")
+    parser.add_argument("--checkpoint", default=None,
+                         help="Path to a fine-tuned predictor directory (from finetune_lagllama.py, "
+                              "<output_dir>/predictor) to evaluate instead of the zero-shot pretrained "
+                              "checkpoint. Loaded via PyTorchPredictor.deserialize() -- bypasses "
+                              "build_predictor() entirely, so context_len/pred_len are whatever the "
+                              "checkpoint was fine-tuned with (read from the serialized predictor, not "
+                              "from this script's own windows).")
+    parser.add_argument("--output_model_name", default="lag-llama",
+                         help="Model name results are saved under (data/results/<dataset>/<name>_results.csv). "
+                              "Use e.g. lag-llama_finetuned when evaluating a fine-tuned checkpoint.")
     args = parser.parse_args()
 
     if args.seed is not None:
@@ -101,14 +114,6 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    print("1. Downloading Lag-Llama checkpoint (cached after first run)...")
-    os.makedirs(CKPT_DIR, exist_ok=True)
-    ckpt_path = hf_hub_download(
-        repo_id="time-series-foundation-models/Lag-Llama",
-        filename="lag-llama.ckpt",
-        local_dir=CKPT_DIR,
-    )
-
     print(f"2. Loading {args.dataset} data + shared windows...")
     df = pd.read_csv(data_path(args.dataset))
     df["timestamps"] = pd.to_datetime(df["timestamps"])
@@ -117,8 +122,19 @@ def main():
     pred_len = int(windows.iloc[0].target_end_idx - windows.iloc[0].target_start_idx + 1)
     print(f"   {len(windows)} windows to evaluate, context_len={context_len}, pred_len={pred_len}, num_samples={NUM_SAMPLES}")
 
-    print("3. Building predictor (once, reused across all windows)...")
-    predictor = build_predictor(ckpt_path, pred_len, context_len, device, NUM_SAMPLES)
+    if args.checkpoint:
+        print(f"1/3. Loading fine-tuned predictor from {args.checkpoint} ...")
+        predictor = PyTorchPredictor.deserialize(Path(args.checkpoint))
+    else:
+        print("1. Downloading Lag-Llama checkpoint (cached after first run)...")
+        os.makedirs(CKPT_DIR, exist_ok=True)
+        ckpt_path = hf_hub_download(
+            repo_id="time-series-foundation-models/Lag-Llama",
+            filename="lag-llama.ckpt",
+            local_dir=CKPT_DIR,
+        )
+        print("3. Building predictor (once, reused across all windows)...")
+        predictor = build_predictor(ckpt_path, pred_len, context_len, device, NUM_SAMPLES)
 
     all_rows = []
     t0 = time.time()
@@ -139,7 +155,7 @@ def main():
 
         for step, (_, row) in enumerate(target_slice.iterrows(), start=1):
             all_rows.append({
-                "model": "lag-llama",
+                "model": args.output_model_name,
                 "window_id": w.window_id,
                 "target_date": row["timestamps"].date().isoformat(),
                 "step_ahead": step,
@@ -152,7 +168,7 @@ def main():
         elapsed = time.time() - t0
         print(f"   window {int(w.window_id) + 1}/{len(windows)} done ({elapsed:.1f}s elapsed)")
 
-    out_path = save_results(all_rows, "lag-llama", args.dataset)
+    out_path = save_results(all_rows, args.output_model_name, args.dataset)
     print(f"\nSaved {len(all_rows)} rows to {out_path}")
 
     metrics = compute_metrics(pd.DataFrame(all_rows))

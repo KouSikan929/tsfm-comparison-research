@@ -21,7 +21,7 @@ sys.path.append(os.path.abspath(COMMON_ROOT))
 from results_io import load_results, results_dir  # noqa: E402
 
 MODELS = ["kronos", "lag-llama", "timesfm", "itransformer"]
-COLORS = {"kronos": "#d62728", "lag-llama": "#9467bd", "timesfm": "#2ca02c", "itransformer": "#1f77b4"}
+COLORS = {"kronos": "#d62728", "lag-llama": "#9467bd", "timesfm": "#2ca02c", "itransformer": "#1f77b4", "kronos_finetuned": "#ff9896", "lag-llama_finetuned": "#c5b0d5", "timesfm_finetuned": "#98df8a"}
 OUT_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "results")
 
 

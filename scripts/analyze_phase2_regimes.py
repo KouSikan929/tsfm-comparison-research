@@ -38,7 +38,7 @@ sys.path.append(os.path.dirname(__file__))
 from aggregate_results import diebold_mariano  # noqa: E402
 
 ALL_MODELS = ["kronos", "lag-llama", "timesfm", "itransformer"]
-COLORS = {"kronos": "#d62728", "lag-llama": "#9467bd", "timesfm": "#2ca02c", "itransformer": "#1f77b4"}
+COLORS = {"kronos": "#d62728", "lag-llama": "#9467bd", "timesfm": "#2ca02c", "itransformer": "#1f77b4", "kronos_finetuned": "#ff9896", "lag-llama_finetuned": "#c5b0d5", "timesfm_finetuned": "#98df8a"}
 REGIME_ORDER = ["stable", "medium", "unstable"]
 OUT_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "results")
 CAUSAL_FEATURES_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "regime_features_all_causal.csv")

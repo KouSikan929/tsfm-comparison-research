@@ -4,6 +4,12 @@
 data/checkpoints/
 models/iTransformer/checkpoints/
 
+# Fine-tuned checkpoints (Kronos/Lag-Llama/TimesFM LoRA) -- large, fully
+# regenerable by rerunning finetune_<model>.py (see
+# docs/finetuning_server_guide.md). The evaluation RESULTS derived from them
+# (data/results/<dataset>/<model>_finetuned_results.csv) are small and kept.
+data/finetuned_checkpoints/
+
 # iTransformer's own intermediate per-run dumps (pred.npy/true.npy/metrics.npy,
 # visualization PDFs). The actual deliverable results live in data/results/,
 # written by scripts/eval_itransformer.py from these.

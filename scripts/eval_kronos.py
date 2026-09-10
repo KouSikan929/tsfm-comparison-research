@@ -45,15 +45,30 @@ def main():
                          help="Optional seed for the stochastic sampling (T=1.0/top_p=0.9 draws). "
                               "Unset by default -- prior runs in this project were unseeded, so results "
                               "won't be bit-identical to earlier runs even with a seed now.")
+    parser.add_argument("--checkpoint", default=None,
+                         help="Path to a fine-tuned checkpoint directory (e.g. from finetune_kronos.py, "
+                              "<output_dir>/basemodel/best_model) to evaluate instead of the zero-shot "
+                              "NeoQuasar/Kronos-small checkpoint. Tokenizer is unaffected (kept frozen "
+                              "during fine-tuning) unless --tokenizer_checkpoint is also given.")
+    parser.add_argument("--tokenizer_checkpoint", default=None,
+                         help="Path to a fine-tuned tokenizer checkpoint, if the tokenizer was also "
+                              "fine-tuned (not the default -- see finetune_kronos.py). Defaults to the "
+                              "pretrained tokenizer.")
+    parser.add_argument("--output_model_name", default="kronos",
+                         help="Model name results are saved under (data/results/<dataset>/<name>_results.csv). "
+                              "Use e.g. kronos_finetuned when evaluating a fine-tuned checkpoint so it doesn't "
+                              "overwrite the zero-shot results.")
     args = parser.parse_args()
 
     if args.seed is not None:
         torch.manual_seed(args.seed)
         np.random.seed(args.seed)
 
-    print("1. Loading Kronos-small model + tokenizer...")
-    tokenizer = KronosTokenizer.from_pretrained("NeoQuasar/Kronos-Tokenizer-base")
-    model = Kronos.from_pretrained("NeoQuasar/Kronos-small")
+    tokenizer_id = args.tokenizer_checkpoint or "NeoQuasar/Kronos-Tokenizer-base"
+    model_id = args.checkpoint or "NeoQuasar/Kronos-small"
+    print(f"1. Loading Kronos model ({model_id}) + tokenizer ({tokenizer_id})...")
+    tokenizer = KronosTokenizer.from_pretrained(tokenizer_id)
+    model = Kronos.from_pretrained(model_id)
     predictor = KronosPredictor(model, tokenizer, max_context=512, device="cuda")
 
     print(f"2. Loading {args.dataset} data + shared windows...")
@@ -85,7 +100,7 @@ def main():
 
         for step, (_, row) in enumerate(target_slice.iterrows(), start=1):
             all_rows.append({
-                "model": "kronos",
+                "model": args.output_model_name,
                 "window_id": w.window_id,
                 "target_date": row["timestamps"].date().isoformat(),
                 "step_ahead": step,
@@ -98,7 +113,7 @@ def main():
         elapsed = time.time() - t0
         print(f"   window {int(w.window_id) + 1}/{len(windows)} done ({elapsed:.1f}s elapsed)")
 
-    out_path = save_results(all_rows, "kronos", args.dataset)
+    out_path = save_results(all_rows, args.output_model_name, args.dataset)
     print(f"\nSaved {len(all_rows)} rows to {out_path}")
 
     metrics = compute_metrics(pd.DataFrame(all_rows))
