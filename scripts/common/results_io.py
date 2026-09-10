@@ -24,11 +24,23 @@ import numpy as np
 import pandas as pd
 
 RESULTS_ROOT = os.path.join(os.path.dirname(__file__), "..", "..", "data", "results")
+RAW_DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "raw")
+TRAIN_END = "2024-06-30"  # must match scripts/download_data.py
 
 RESULT_COLUMNS = [
     "model", "window_id", "target_date", "step_ahead",
     "actual_close", "pred_close", "pred_q10", "pred_q90",
 ]
+
+
+def naive_insample_mae(dataset: str) -> float:
+    """In-sample lag-1 naive-forecast MAE on the TRAIN split only, used as the
+    scale factor for MASE (Hyndman & Koehler 2006): MASE = MAE / naive_insample_mae.
+    Computed once per dataset (not per model -- the naive baseline doesn't
+    depend on which forecasting model is being scored)."""
+    raw = pd.read_csv(os.path.join(RAW_DATA_DIR, f"{dataset}_daily.csv"))
+    train = raw[raw["timestamps"] <= TRAIN_END]["close"].values
+    return float(np.mean(np.abs(np.diff(train))))
 
 
 def results_dir(dataset: str) -> str:
@@ -58,14 +70,20 @@ def load_results(model_name: str, dataset: str) -> pd.DataFrame:
     return df
 
 
-def compute_metrics(df: pd.DataFrame) -> dict:
+def compute_metrics(df: pd.DataFrame, dataset: str | None = None) -> dict:
     """Aggregate metrics over an entire long-format results table (all windows).
 
     If `df` pools rows from multiple datasets/markets (has a "dataset"
     column), directional accuracy groups by (dataset, window_id) rather than
     window_id alone -- window_id restarts at 0 for every dataset, so
     grouping by window_id alone would silently splice together unrelated
-    windows from different markets when computing step-to-step direction."""
+    windows from different markets when computing step-to-step direction.
+
+    `dataset`: if given (single-dataset call), also computes MASE, scaled by
+    that dataset's in-sample lag-1 naive MAE. Omit (or leave as pooled
+    multi-dataset df) to skip MASE -- the naive scale factor is dataset-
+    specific and not meaningful pooled across markets with different price
+    levels."""
     mae = np.mean(np.abs(df["pred_close"] - df["actual_close"]))
     rmse = np.sqrt(np.mean((df["pred_close"] - df["actual_close"]) ** 2))
 
@@ -85,6 +103,9 @@ def compute_metrics(df: pd.DataFrame) -> dict:
 
     n_windows = df[group_keys].drop_duplicates().shape[0]
     metrics = {"mae": mae, "rmse": rmse, "dir_acc": dir_acc, "n_points": len(df), "n_windows": n_windows}
+
+    if dataset is not None:
+        metrics["mase"] = mae / naive_insample_mae(dataset)
 
     if df["pred_q10"].notna().any() and df["pred_q90"].notna().any():
         covered = (df["actual_close"] >= df["pred_q10"]) & (df["actual_close"] <= df["pred_q90"])

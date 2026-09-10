@@ -88,7 +88,15 @@ def build_predictor(ckpt_path, prediction_length, context_length, device, num_sa
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", required=True, help="e.g. SP500, SSE, SZSE, Nikkei225")
+    parser.add_argument("--seed", type=int, default=None,
+                         help="Optional seed for the num_samples predictive-distribution draws. "
+                              "Unset by default -- prior runs in this project were unseeded, so results "
+                              "won't be bit-identical to earlier runs even with a seed now.")
     args = parser.parse_args()
+
+    if args.seed is not None:
+        torch.manual_seed(args.seed)
+        np.random.seed(args.seed)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")

@@ -90,7 +90,7 @@ def main():
     print("=" * 70)
     summary_rows = []
     for m, df in per_model.items():
-        metrics = compute_metrics(df)
+        metrics = compute_metrics(df, dataset=dataset)
         summary_rows.append({"model": m, **metrics})
     summary = pd.DataFrame(summary_rows).set_index("model")
     print(summary.to_string(float_format=lambda x: f"{x:.4f}"))

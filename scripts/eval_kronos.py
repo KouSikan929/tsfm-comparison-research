@@ -24,6 +24,7 @@ import time
 
 import numpy as np
 import pandas as pd
+import torch
 
 KRONOS_ROOT = os.path.join(os.path.dirname(__file__), "..", "models", "Kronos")
 sys.path.append(os.path.abspath(KRONOS_ROOT))
@@ -40,7 +41,15 @@ N_SAMPLES = 10
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", required=True, help="e.g. SP500, SSE, SZSE, Nikkei225")
+    parser.add_argument("--seed", type=int, default=None,
+                         help="Optional seed for the stochastic sampling (T=1.0/top_p=0.9 draws). "
+                              "Unset by default -- prior runs in this project were unseeded, so results "
+                              "won't be bit-identical to earlier runs even with a seed now.")
     args = parser.parse_args()
+
+    if args.seed is not None:
+        torch.manual_seed(args.seed)
+        np.random.seed(args.seed)
 
     print("1. Loading Kronos-small model + tokenizer...")
     tokenizer = KronosTokenizer.from_pretrained("NeoQuasar/Kronos-Tokenizer-base")

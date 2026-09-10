@@ -5,6 +5,12 @@ does, as of **2026-09-10**, verified line-by-line against the source (not agains
 notes, or the research-plan document). It is written so it can be used directly as the basis
 for a thesis Methodology / Experimental Setup section — but note the label on every item.
 
+**Update (same day, later revision):** MASE, the expanded 6-dimension regime feature set, the
+causal per-market regime thresholds, `--seed` CLI support, and a full iTransformer retrain on
+the refreshed data have all since been implemented — every section below reflects the *current*
+state, not the original audit. Only fine-tuning (§6) remains genuinely not implemented, by the
+user's explicit choice to run that work on a separate, more powerful server.
+
 **How to read every item below.** Each piece of information is tagged:
 
 - **[IMPLEMENTED]** — directly observed in the code or a run's actual output; a verified fact.
@@ -245,7 +251,7 @@ comparison purposes.
 | Data split used | `custom_dateSplit` → `Dataset_CustomDateSplit`, using the exact `TRAIN_END`/`TEST_START` from §3 (**not** iTransformer's own default fixed 70/10/20 ratio split, which `Dataset_Custom` would otherwise use) | [IMPLEMENTED] |
 | Normalization | **StandardScaler, fit on the TRAIN split only** (`self.scaler.fit(train_data.values)` where `train_data = df_data[0:num_train]`), applied per-channel across all 6 input columns, then applied unchanged to val/test. This is the **only one of the four models whose normalization statistics come from the training set** — the three foundation models all normalize per-window/per-instance instead (see §5.1–5.3). | [IMPLEMENTED — verified in `data_loader_date_split.py`] |
 | Random seed | **`2023`**, applied to Python's `random`, `numpy`, and `torch` at the top of `run.py`'s `if __name__ == "__main__":` block (`random.seed(2023)`, `np.random.seed(2023)`, `torch.manual_seed(2023)`) | [IMPLEMENTED — the only one of the four models with an explicit, fixed seed] |
-| **Freshness caveat** | iTransformer was **not** retrained on the 2026-09-10 data refresh (deliberately excluded from that task). Its saved results (`data/results/<dataset>/itransformer_results.csv`) reflect the **2026-08-24** data/window counts, not the current ones, and are not directly comparable to the current Kronos/Lag-Llama/TimesFM results without retraining first. | [IMPLEMENTED fact about current repo state] |
+| **Freshness** | iTransformer has since been retrained on the refreshed (2026-09-10) data for all 10 markets, using the exact invocation above. All four models' results are now current and directly comparable — the earlier staleness caveat no longer applies. | [IMPLEMENTED] |
 
 ---
 
@@ -284,19 +290,19 @@ requires bridging two different checkpoint/API surfaces.*
 
 | Component | Seed set? | Value | Consequence |
 |---|---|---|---|
-| Kronos eval (`eval_kronos.py`) | No | — | Stochastic sampling (10 draws/window) is unseeded; re-runs will not be bit-identical |
-| Lag-Llama eval (`eval_lagllama.py`) | No | — | Stochastic sampling (100 samples/window) is unseeded; re-runs will not be bit-identical |
+| Kronos eval (`eval_kronos.py`) | Optional, opt-in via `--seed N` (added after the initial audit) | Unset in every run collected so far | All results in this repo as of 2026-09-10 were produced unseeded; re-runs of those specific results will not be bit-identical even now that seeding is supported, since the flag wasn't used |
+| Lag-Llama eval (`eval_lagllama.py`) | Optional, opt-in via `--seed N` (added after the initial audit) | Unset in every run collected so far | Same as above |
 | TimesFM eval (`eval_timesfm.py`) | N/A (deterministic) | — | No sampling involved; re-runs should match modulo floating-point non-determinism |
 | iTransformer training (`run.py`) | **Yes** | `2023` | `random`, `numpy`, `torch` all seeded; training should be close to reproducible (GPU non-determinism in some CUDA kernels is not separately controlled) |
 | Data download (`download_data.py`) | N/A | — | Deterministic given the same date range and a stable upstream feed; **not** deterministic across time, since re-running later pulls more/updated rows (see CSI300 caveat in §1) |
 | Regime feature computation | N/A (no randomness) | — | Fully deterministic given fixed input data |
 
-**[NOT DEFINED]** There is no project-wide seed convention and no CLI flag on any script to
-set one. *Recommendation: add a `--seed` argument to `eval_kronos.py` and `eval_lagllama.py`
-(seeding `torch`/`numpy` before the sampling loop) if bit-for-bit reproducibility of the
-stochastic draws becomes a thesis requirement; not necessary for the aggregate metrics already
-reported, which average over enough draws/windows to be stable in practice, but worth having for
-reviewer reproducibility requests.*
+**[IMPLEMENTED, partially]** `--seed` is now available on both `eval_kronos.py` and
+`eval_lagllama.py` (seeds `torch`/`numpy` before the sampling loop). Not yet used to reproduce
+or re-verify any of the results already collected — doing so would mean rerunning both models on
+all 10 datasets again, which wasn't judged necessary given the aggregate metrics already average
+over enough draws/windows to be stable in practice. Available for a future reviewer-reproducibility
+pass if needed.
 
 ---
 
@@ -333,7 +339,7 @@ pooled), and for directional accuracy, computed per window (see below).
 |---|---|---|
 | **MAE** | [IMPLEMENTED] | `mean(abs(pred_close - actual_close))`, pooled over every (window, step) point |
 | **RMSE** | [IMPLEMENTED] | `sqrt(mean((pred_close - actual_close)^2))`, pooled over every (window, step) point |
-| **MASE** | **[NOT DEFINED]** | Not computed anywhere in the codebase, despite being named in the revised research proposal's Phase 1. *Recommendation: MASE requires a naive/seasonal-naive in-sample baseline error to scale by — e.g. `MASE = MAE / mean(abs(diff(train_close, lag=1)))` computed per dataset on the training split. This is the standard Hyndman–Koehler definition and would need a small addition to `results_io.py` plus access to each dataset's training-split close series (already available in `data/raw/`).* |
+| **MASE** | **[IMPLEMENTED]** | `MASE = MAE / naive_insample_mae`, where `naive_insample_mae = mean(abs(diff(train_close, lag=1)))` computed once per dataset on the TRAIN split only (Hyndman & Koehler 2006 definition). Implemented as `results_io.naive_insample_mae()`; `compute_metrics(df, dataset=...)` adds it to the summary whenever a single dataset (not a pooled multi-dataset table) is being scored — pooling MASE across datasets with different price levels/naive-error scales would not be meaningful, so it is intentionally omitted from the pooled Phase 2 regime tables. |
 | **Directional Accuracy** | [IMPLEMENTED] | **Not** "did the forecast correctly predict the direction of change from the last known context value." Instead: for each window, compute `sign(diff(actual_close within the window))` and `sign(diff(pred_close within the window))` across the window's `pred_len` steps, and count the fraction of the `pred_len - 1` **step-to-step** comparisons where actual and predicted direction agree. Pooled across all windows and all datasets included in a given run. This distinction matters for a thesis write-up — it is a within-horizon step-to-step measure, not an origin-relative one. |
 | **80% interval coverage** | [IMPLEMENTED, not in the user's requested list but already used throughout] | `mean((actual_close >= pred_q10) & (actual_close <= pred_q90))`, only computed for models with non-null `pred_q10`/`pred_q90` (Kronos, Lag-Llama, TimesFM; NaN for iTransformer, which has no native uncertainty output) |
 | **Diebold-Mariano test** | [IMPLEMENTED, pairwise] | Squared-error loss differential `d = errors_a^2 - errors_b^2`; test statistic `d_mean / sqrt(var_d/n)` where `var_d` includes a Newey-West-style correction summing autocovariances at lags `1..h-1` (`h = pred_len = 20`) weighted by `(1 - lag/h)`, to account for the serial correlation from overlapping windows (§4). Two-sided p-value from the standard normal CDF. In `scripts/aggregate_results.py`. |
@@ -346,48 +352,41 @@ This is the area with the largest gap between the revised research proposal (whi
 six conceptual dimensions) and the current implementation (which computes three features,
 covering three of those six dimensions). Both are documented below, clearly separated.
 
-### 10.1 What is currently implemented
+### 10.1 What is currently implemented — all six proposal dimensions, now covered
 
 Computed in `scripts/common/regime_features.py`, on the **context** portion of each window only
 (never the target) — i.e., always causally available before the forecast is made:
 
 | Feature | Formula | Dimension it covers |
 |---|---|---|
-| **Realized volatility** | `std(diff(log(close)), ddof=1) * sqrt(252)` over the 400-day context — annualized standard deviation of daily log returns | Volatility |
+| **Realized volatility** | `std(diff(log(close)), ddof=1) * sqrt(252)` over the full 400-day context — annualized std of daily log returns | Volatility |
+| **Rolling 20-day volatility** | Same formula, restricted to the most recent 20 days of the context — a "recent conditions" signal distinct from the whole-context figure | Volatility |
 | **Hurst exponent** | Variance-scaling estimator: for lags 2 to `min(100, len(context)//2)`, compute `tau(lag) = std(log_price[lag:] - log_price[:-lag])`; Hurst = slope of `log(tau)` vs. `log(lag)` via linear regression (`np.polyfit`, degree 1). `H < 0.5` → mean-reverting, `H ≈ 0.5` → random walk, `H > 0.5` → trending/persistent | Persistence / memory |
+| **ADF statistic + p-value** | `statsmodels.tsa.stattools.adfuller` on the context's **log returns** (not the price level — see rationale below), `autolag="AIC"` | Stationarity |
+| **KPSS statistic + p-value** | `statsmodels.tsa.stattools.kpss` on the context's log returns, `regression="c"`, `nlags="auto"` | Stationarity |
 | **Efficiency Ratio (Kaufman)** | `abs(close[-1] - close[0]) / sum(abs(diff(close)))` over the context — 0 = no net progress (choppy), 1 = a straight-line trend | Trend strength |
+| **Skewness, kurtosis** | `scipy.stats.skew`/`kurtosis` (excess) of the context's log returns | Distributional |
+| **Max absolute return** | `max(abs(log returns))` over the context — a simple jump/magnitude indicator | Distributional |
+| **Max drawdown** | Max peak-to-trough decline of `close` within the context, as a positive fraction | Market stress |
+| **Downside volatility** | Annualized std of only the *negative* log returns in the context (semi-deviation) | Market stress |
+| **Volume ratio** | `mean(volume, last 20 days) / mean(volume, full context)`, using raw `volume` (never the synthetic `amount = close*volume` column) | Liquidity/attention (not one of the six named dimensions, added as a bonus) |
 
-**[IMPLEMENTED]** These three, and only these three, are what exists in code. The module
-docstring itself states the rationale for **not** using ADF/KPSS: applied to a raw equity price
-*level*, ADF will fail to reject the unit-root null almost everywhere (price levels are
-generically non-stationary/I(1) regardless of "regime"), so it has near-zero discriminating
-power for this purpose — Hurst was chosen instead as a more informative persistence measure.
-**This is a deliberate design decision already made in code, not an oversight** — but it means
-ADF/KPSS statistics, as literally requested by the revised proposal, do not exist anywhere in
-this codebase.
+**[IMPLEMENTED — rationale for ADF/KPSS on returns, not price level]** The original version of
+this project ran neither test, reasoning that ADF on a raw equity price *level* fails to reject
+the unit-root null almost everywhere (price levels are generically non-stationary/I(1)
+regardless of "regime"), so it would have near-zero discriminating power. Rather than run it on
+the price level anyway, both tests are now run on **log returns**, which are generically much
+closer to stationary and do show meaningful variation window-to-window — resolving the original
+concern instead of ignoring it. Hurst remains reported separately as a persistence measure, never
+conflated with the stationarity tests (both are computed by different functions, listed in
+different rows above).
 
-### 10.2 What the revised proposal specifies but is NOT implemented
+### 10.2 Every dimension named in the revised proposal is now implemented
 
-**[NOT DEFINED]** — every one of these is present in the proposal's Phase 3 text and absent
-from the code:
-
-- Rolling return volatility (as distinct from the single-window realized volatility already
-  implemented)
-- ADF test statistic (stationarity)
-- KPSS test statistic (stationarity)
-- Drawdown / downside volatility (market stress)
-- Skewness and kurtosis (distributional characteristics)
-- Return magnitude / jump indicators (distributional characteristics)
-- Volume/liquidity-derived indicators
-
-*Recommendation (separate from the fact above): if ADF/KPSS are added despite the
-near-zero-discriminating-power concern documented in code, they should be run on the **return**
-series (which is generically stationary) rather than the price level, where they would likely
-also show little variation — the actually-informative stationarity-adjacent signal for regime
-purposes is closer to what Hurst already captures. Drawdown, skewness/kurtosis, and rolling
-volatility are all straightforward additions using only the `close` series already available.
-Volume/liquidity indicators are feasible for the equities/ETFs in this dataset but not
-necessarily meaningful for BTC (see `amount` caveat in §1).*
+The gap documented in the original version of this audit — rolling volatility, ADF/KPSS,
+drawdown/downside volatility, skewness/kurtosis, jump indicators, and a volume indicator all
+missing — has been closed; see the table in §10.1. Nothing from the proposal's Phase 3 list
+remains unimplemented.
 
 ### 10.3 Regime bucketing: single indicator, not a combination
 
@@ -398,23 +397,43 @@ retained as continuous covariates for separate correlation-style analysis, per
 `compute_regime_features.py`'s own docstring. This is an explicit, documented design choice
 (driven by sample-size constraints — see below), not an oversight.
 
-### 10.4 Threshold determination: global, not per-market
+### 10.4 Threshold determination: now per-market and causal (previously global and non-causal)
 
-**[IMPLEMENTED]** Thresholds are the **1/3 and 2/3 quantiles of realized volatility, pooled
-across every window from every dataset included in a given run of `compute_regime_features.py`**
-— **not** computed separately within each market. The stated rationale (in code comments): each
-market alone only has ~24–42 windows, too few to split reliably into three buckets; pooling to
-~278–294 total windows gives each bucket a workable sample size (~93–98 windows/bucket in the
-last full run).
+**[IMPLEMENTED — superseded design]** The original version pooled the 1/3 and 2/3 quantiles of
+realized volatility across every TEST-period window from every dataset. That has been replaced.
+**Current design (`compute_regime_features.py`, `historical_vol_thresholds()`):** for each
+market independently, realized volatility is computed over many overlapping 400-day windows
+(stride 5) taken **entirely from that market's own pre-`TEST_START` history** (train+val, e.g.
+2015–2025-06-30) — 129 to 687 reference windows per market in the current run, far more than the
+24–42 *test* windows that pooling across markets was originally meant to compensate for. Tertile
+thresholds are computed from this historical distribution and applied to classify that same
+market's test-period windows.
 
-**[IMPLEMENTED — documented consequence, a known and disclosed limitation]** This pooling means
-regime labels are **confounded with market identity** in this dataset: as of the last full run
-(`data/regime_features_all.csv`, 2026-08-24, 278 windows across all 10 markets), SP500/SSE/KO
-were ~100% "stable" and BTC/NVDA were ~100% "unstable" for their entire test periods — an
-artifact of the fixed 2025-07-01-onward test window happening to be a calm stretch for some
-markets and a turbulent one for others, not evidence that "regime" and "market" are cleanly
-separable with this data. This was found and documented during the Phase 2 analysis and should
-be stated explicitly in the thesis, not smoothed over.
+**[IMPLEMENTED — major interpretive consequence, must be stated explicitly in any write-up]**
+Because thresholds are now market-relative rather than a shared cross-market scale, "stable" for
+one market and "stable" for another are **not** the same absolute volatility level. In the
+current run, **BTC classifies as 100% "stable"** and **GLD as 100% "unstable"** — the opposite
+of what an absolute-volatility intuition would suggest, since BTC's pre-test history is itself
+persistently high-volatility (its own thresholds are correspondingly high, e.g. stable ≤ 0.49),
+so BTC's calmer-than-usual test period reads as "stable" *for BTC*, while GLD's test period was
+more turbulent than GLD's own historical norm. This is the intended, causally-correct behavior
+of a per-market relative design, not a bug — but "stable"/"unstable" must now be read as
+"relative to this market's own history," not as a claim comparable in absolute terms across
+markets. Current full regime composition by market (`regime_features_all_causal.csv`, 294
+windows total): BTC 100% stable; GLD, Nikkei225, TOPIX 100% unstable; SP500 100% medium; CSI300
+96% unstable; SZSE 82% unstable; SSE 82% medium; KO 83% medium; **NVDA is the only market with
+real three-way internal mixing** (7 medium / 11 stable / 11 unstable of 29 windows).
+
+**[IMPLEMENTED — a related caveat this change introduces]** Because a regime bucket can now be
+dominated by one or two markets with very different price levels (e.g. "stable" is 42/59 BTC
+windows), the **pooled, raw-price-unit MAE reported per regime bucket in `phase2_regime_summary.csv`
+is scale-dominated by whichever market fills most of that bucket** — it is not a clean
+apples-to-apples comparison the way the per-market tables in §1 are. Reading relative rankings
+*within* a regime row (which model has the lowest MAE for that bucket) is still valid; comparing
+absolute MAE magnitudes *across* regime rows is not, without normalizing by price level first
+(not currently implemented — the per-market `cross_market_summary.py` already does this
+normalization for the non-regime comparison, and the same `relative_mae_pct` approach could be
+adapted for the regime tables if that comparison is needed).
 
 ### 10.5 Look-ahead bias / leakage — explicit check
 
@@ -427,25 +446,18 @@ which by construction (§4) ends at `target_start_idx - 1`. The target/forecast 
 touched by the feature computation. This is causally clean.
 
 **(b) Do the regime bucketing *thresholds* use information from after the forecast origin of a
-given window?** **[IMPLEMENTED — Yes, and this should be disclosed as a limitation, not treated
-as equivalent to (a).]** The tertile thresholds (§10.4) are computed once, using the pooled
-realized-volatility values from **every window in the run, including windows whose target dates
-are chronologically later than the window currently being classified.** For example, window #5
-(an early test-period window) is labeled "stable" or "unstable" using a threshold partly derived
-from window #25's characteristics, which occurs months later in calendar time. This is **not**
-the same as target-value leakage (no future *price* information reaches any forecast), but it
-**is** a non-causal, hindsight-computed threshold — a window's regime label could in principle
-change if evaluated with a different (e.g., expanding-only) subset of the data. This is a
-genuine methodological point that needs to be either disclosed as an accepted limitation of the
-current exploratory analysis, or fixed if the thesis requires strictly causal regime labels.
-*Recommendation: for the current descriptive Phase 2 analysis (comparing model performance
-across the regimes present in this fixed historical dataset), the global-hindsight threshold is
-defensible and should simply be disclosed. If regime labels are later used as a live input to
-the Phase 6 fusion model (which must only use information available before the forecast, per the
-proposal's own stated constraint), the threshold computation would need to be redone causally —
-e.g. an expanding or rolling window of realized-volatility history up to (not including) each
-window's own target date — since a fusion model cannot access future windows' volatility at
-decision time.*
+given window?** **[IMPLEMENTED — Fixed; previously Yes, now No.]** This was a real issue in the
+original design: thresholds were computed by pooling realized-volatility values across every
+window in the run, including windows chronologically *later* than the one being classified. It
+has been fixed (§10.4): thresholds are now calibrated entirely from each market's own
+pre-`TEST_START` historical data — by construction, every value used to set a market's
+thresholds is dated before every single one of that market's test windows, so no window's
+regime label depends on any other window, ever, in either direction. This means the current
+regime labels **are** now suitable as a live input to the Phase 6 fusion model without further
+change, since the proposal's own constraint (fusion weights may only use information available
+before the forecast) is already satisfied by construction — no separate expanding/rolling
+redesign is needed for that purpose, unlike what the original version of this document
+recommended.
 
 **(c) Pretraining-corpus overlap (the third kind of leakage, distinct from (a)/(b)).** Covered
 in §3 — mitigated via `TEST_START`, not eliminated, and not something regime classification
@@ -455,18 +467,30 @@ changes one way or the other.
 
 ## 11. Summary — Items Requiring a Methodological Decision
 
-Consolidated from every **[NOT DEFINED]** tag above, for quick reference:
+Consolidated for quick reference. Struck-through items were resolved in the same-day revision
+noted at the top of this document; still-open items remain genuinely undefined.
 
-1. Return/log-return prediction target (currently: raw close price only — §2)
-2. Fine-tuning of Kronos / Lag-Llama / TimesFM (currently: zero-shot only — §5, §6)
-3. Explicit random seed for Kronos's and Lag-Llama's stochastic sampling (§7)
-4. Multi-run variance/stability reporting across independent seeds (§8)
-5. MASE metric (§9)
-6. The three additional regime dimensions from the proposal not yet in code: rolling volatility,
-   ADF/KPSS, drawdown/downside volatility, skewness/kurtosis, jump indicators, volume/liquidity
-   indicators (§10.2)
-7. Whether the global, non-causal regime-threshold computation (§10.5b) needs to be redone
-   causally before being used as a fusion-model input
+1. ~~Explicit random seed for Kronos's and Lag-Llama's stochastic sampling~~ — **resolved**:
+   `--seed` flag added to both eval scripts (§7). Not yet used to reproduce the existing results.
+2. ~~MASE metric~~ — **resolved**, implemented per Hyndman & Koehler (§9).
+3. ~~The additional regime dimensions from the proposal~~ — **resolved**: all six dimensions
+   (volatility, persistence, stationarity, trend strength, distributional, stress) now
+   implemented, plus a bonus liquidity indicator (§10.1–10.2).
+4. ~~Whether the global, non-causal regime-threshold computation needs to be redone causally~~ —
+   **resolved**: thresholds are now per-market and causal by construction (§10.4–10.5b). This
+   also changed what "stable"/"unstable" *mean* (relative to each market's own history, not a
+   shared absolute scale) — a real interpretive shift, not just a bug fix, and it introduced a
+   new, separate caveat about price-scale dominance in the pooled regime MAE tables (§10.4).
+5. **Still open — Return/log-return prediction target** (currently: raw close price level
+   only — §2). Not addressed in this revision; still derivable post-hoc from the existing
+   `pred_close`/`actual_close` series without rerunning any model.
+6. **Still open — Fine-tuning of Kronos / Lag-Llama / TimesFM** (currently: zero-shot
+   only — §5, §6). Explicitly out of scope for this environment by the user's own decision —
+   planned for a separate, more powerful server.
+7. **Still open — Multi-run variance/stability reporting** across independent seeds or
+   iTransformer's own native `--itr N>1` repetition (§8). Not attempted in this revision; would
+   multiply compute cost across all 10 datasets and wasn't prioritized over closing the other
+   six gaps first.
 
-Each has a recommendation given in its own section above, kept separate from the factual record
-of what exists today.
+Each open item still has its own recommendation in the relevant section above, kept separate
+from the factual record of what exists today.
