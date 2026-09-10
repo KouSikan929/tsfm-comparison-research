@@ -26,12 +26,16 @@ COLORS = {"kronos": "#d62728", "lag-llama": "#9467bd", "timesfm": "#2ca02c", "it
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", required=True, help="e.g. SP500, SSE, SZSE, Nikkei225")
+    parser.add_argument("--models", nargs="+", default=MODELS,
+                         help="Subset of models to plot (default: all 4) -- must match what "
+                              "aggregate_results.py was run with for this dataset.")
     args = parser.parse_args()
     dataset = args.dataset
+    models = args.models
     out_dir = results_dir(dataset)
 
     summary = pd.read_csv(os.path.join(out_dir, "phase1_summary.csv"), index_col=0)
-    per_model = {m: load_results(m, dataset) for m in MODELS}
+    per_model = {m: load_results(m, dataset) for m in models}
 
     fig, axes = plt.subplots(2, 2, figsize=(11, 8))
     metrics = [("mae", "MAE (lower better)"), ("rmse", "RMSE (lower better)"),
@@ -58,11 +62,11 @@ def main():
     plt.savefig(out1, dpi=150)
     print(f"Saved {out1}")
 
-    # Example window overlay: pick a middle window for all 4 models
+    # Example window overlay: pick a middle window for all included models
     example_window_id = 13
     fig2, ax = plt.subplots(figsize=(10, 5))
     actual_plotted = False
-    for m in MODELS:
+    for m in models:
         df = per_model[m]
         w = df[df["window_id"] == example_window_id].sort_values("step_ahead")
         if not actual_plotted:

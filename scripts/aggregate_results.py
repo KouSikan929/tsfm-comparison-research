@@ -63,12 +63,17 @@ def diebold_mariano(errors_a: np.ndarray, errors_b: np.ndarray, h: int) -> tuple
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", required=True, help="e.g. SP500, SSE, SZSE, Nikkei225")
+    parser.add_argument("--models", nargs="+", default=MODELS,
+                         help="Subset of models to compare (default: all 4). Use this to exclude a "
+                              "model whose results are stale/out of sync with the others, e.g. "
+                              "--models kronos lag-llama timesfm")
     args = parser.parse_args()
     dataset = args.dataset
+    models = args.models
 
     print(f"Loading per-model results for {dataset}...")
     per_model = {}
-    for m in MODELS:
+    for m in models:
         path = os.path.join(results_dir(dataset), f"{m}_results.csv")
         if not os.path.exists(path):
             print(f"  [skip] {m}: no results file at {path}")

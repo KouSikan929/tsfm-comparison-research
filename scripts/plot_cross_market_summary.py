@@ -28,12 +28,15 @@ OUT_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "results")
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--datasets", nargs="+", required=True)
+    parser.add_argument("--models", nargs="+", default=MODELS,
+                         help="Subset of models to include (default: all 4).")
     args = parser.parse_args()
+    models = args.models
 
     rows = []
     for ds in args.datasets:
         summary = pd.read_csv(os.path.join(results_dir(ds), "phase1_summary.csv"), index_col=0)
-        for m in MODELS:
+        for m in models:
             if m not in summary.index:
                 continue
             actual_mean = load_results(m, ds)["actual_close"].mean()
@@ -51,17 +54,17 @@ def main():
 
     fig, axes = plt.subplots(1, 2, figsize=(13, 5))
 
-    pivot_mae = combined.pivot(index="dataset", columns="model", values="relative_mae_pct")[MODELS]
+    pivot_mae = combined.pivot(index="dataset", columns="model", values="relative_mae_pct")[models]
     pivot_mae = pivot_mae.reindex(args.datasets)
-    pivot_mae.plot(kind="bar", ax=axes[0], color=[COLORS[m] for m in MODELS])
+    pivot_mae.plot(kind="bar", ax=axes[0], color=[COLORS[m] for m in models])
     axes[0].set_ylabel("MAE as % of avg. close price")
     axes[0].set_title("Relative MAE by market (lower = better)")
     axes[0].tick_params(axis="x", rotation=0)
     axes[0].legend(fontsize=8)
 
-    pivot_cov = combined.pivot(index="dataset", columns="model", values="coverage_80")[MODELS]
+    pivot_cov = combined.pivot(index="dataset", columns="model", values="coverage_80")[models]
     pivot_cov = pivot_cov.reindex(args.datasets)
-    pivot_cov.plot(kind="bar", ax=axes[1], color=[COLORS[m] for m in MODELS])
+    pivot_cov.plot(kind="bar", ax=axes[1], color=[COLORS[m] for m in models])
     axes[1].axhline(0.8, color="gray", linestyle="--", linewidth=1, label="target (80%)")
     axes[1].set_ylabel("80% interval coverage")
     axes[1].set_title("Uncertainty calibration by market (target: 0.80)")
