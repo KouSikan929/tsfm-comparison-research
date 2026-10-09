@@ -30,4 +30,6 @@ scratch_*.log
 
 # Conda/venv envs are never inside this project directory, but just in case
 .venv/
+.venv-fusion/
+data/fusion_runs/
 venv/

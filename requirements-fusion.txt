@@ -1,0 +1,13 @@
+# Install CUDA-enabled torch separately using the server's existing setup.
+torch>=2.6,<2.7
+transformers==5.17.0
+huggingface-hub>=1.0,<2
+gluonts==0.14.4
+pytorch-lightning>=2.2,<3
+numpy>=1.26,<2
+pandas>=2.1,<2.2
+scipy>=1.11,<1.16
+statsmodels>=0.14,<0.15
+einops>=0.8,<0.9
+reformer-pytorch==1.4.4
+pytest>=8,<10
